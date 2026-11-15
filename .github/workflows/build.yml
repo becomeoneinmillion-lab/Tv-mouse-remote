@@ -1,0 +1,73 @@
+name: Build Android TV APK & iPad IPA
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build_android:
+    name: Build Android TV & Phone APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Scaffold Flutter & Inject Custom TV Native Code
+        run: |
+          cp lib/main.dart /tmp/main.dart
+          cp pubspec.yaml /tmp/pubspec.yaml
+          flutter create --org com.example --project-name tvremote .
+          cp /tmp/main.dart lib/main.dart
+          cp /tmp/pubspec.yaml pubspec.yaml
+          mkdir -p android/app/src/main/kotlin/com/example/tvremote
+          mkdir -p android/app/src/main/res/xml
+          cp custom_android/MainActivity.kt android/app/src/main/kotlin/com/example/tvremote/MainActivity.kt
+          cp custom_android/MouseAccessibilityService.kt android/app/src/main/kotlin/com/example/tvremote/MouseAccessibilityService.kt
+          cp custom_android/accessibility_service_config.xml android/app/src/main/res/xml/accessibility_service_config.xml
+          cp custom_android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+
+      - name: Build APK
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-TV-and-Phone-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+  build_ios:
+    name: Build Unsigned iPad IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Scaffold iOS Project & Build
+        run: |
+          cp lib/main.dart /tmp/main.dart
+          cp pubspec.yaml /tmp/pubspec.yaml
+          flutter create --org com.example --project-name tvremote .
+          cp /tmp/main.dart lib/main.dart
+          cp /tmp/pubspec.yaml pubspec.yaml
+          flutter pub get
+          flutter build ios --release --no-codesign
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r -y iPad-Remote-Unsigned.ipa Payload
+
+      - name: Upload iPad IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: iPad-Unsigned-IPA
+          path: iPad-Remote-Unsigned.ipa
